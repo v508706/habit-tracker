@@ -1,27 +1,33 @@
 import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import LoginPage from './components/Auth/LoginPage'
-import SetupWizard from './components/Setup/SetupWizard'
-import Dashboard from './components/Dashboard/Dashboard'
+import LoginPage    from './components/Auth/LoginPage'
+import SetupWizard  from './components/Setup/SetupWizard'
+import Dashboard    from './components/Dashboard/Dashboard'
 import HabitManager from './components/Habits/HabitManager'
-import Stats from './components/Stats/Stats'
+import Stats        from './components/Stats/Stats'
 import {
   isSetupDone, getHabits, getCompletions,
   getTodayString, getDayName,
 } from './utils/storage'
-import { initUserData } from './utils/db'
+import { initUserData, cloudSaveFcmToken } from './utils/db'
 import {
-  checkAndNotify, registerFCMToken, listenFCMForeground, showNotification,
+  checkAndNotify, registerFCMToken,
+  listenFCMForeground, showNotification,
 } from './utils/notifications'
-import { cloudSaveFcmToken } from './utils/db'
 
 function Spinner() {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-      <div className="app-spinner" />
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-10 h-10 rounded-full border-4 border-slate-200 border-t-indigo-600 animate-spin-fast" />
     </div>
   )
 }
+
+const TABS = [
+  { id: 'today',  icon: '📅', label: 'Today'  },
+  { id: 'habits', icon: '✨', label: 'Habits'  },
+  { id: 'stats',  icon: '📊', label: 'Stats'   },
+]
 
 function MainApp({ uid }) {
   const { signOut } = useAuth()
@@ -30,59 +36,56 @@ function MainApp({ uid }) {
   const [activeTab,   setActiveTab]   = useState('today')
 
   useEffect(() => {
-    initUserData(uid).then(result => {
-      setSetupDone(result ? result.setupDone : isSetupDone())
+    initUserData(uid).then(r => {
+      setSetupDone(r ? r.setupDone : isSetupDone())
       setSyncLoading(false)
     })
   }, [uid])
 
   useEffect(() => {
     if (!setupDone) return
-
-    registerFCMToken().then(token => {
-      if (token) cloudSaveFcmToken(uid, token)
-    })
-
-    const unsub     = listenFCMForeground((title, body) => showNotification(title, body))
-    const interval  = setInterval(() => {
-      checkAndNotify(getHabits(), getCompletions(), getTodayString(), getDayName())
-    }, 60000)
-
+    registerFCMToken().then(t => t && cloudSaveFcmToken(uid, t))
+    const unsub    = listenFCMForeground((t, b) => showNotification(t, b))
+    const interval = setInterval(() =>
+      checkAndNotify(getHabits(), getCompletions(), getTodayString(), getDayName()), 60000)
     return () => { unsub(); clearInterval(interval) }
   }, [uid, setupDone])
 
   if (syncLoading) return <Spinner />
-
-  if (!setupDone) {
-    return <SetupWizard uid={uid} onComplete={() => setSetupDone(true)} />
-  }
-
-  const tabs = [
-    { id: 'today',  icon: '📅', label: 'Today' },
-    { id: 'habits', icon: '✨', label: 'Habits' },
-    { id: 'stats',  icon: '📊', label: 'Stats' },
-  ]
+  if (!setupDone)  return <SetupWizard uid={uid} onComplete={() => setSetupDone(true)} />
 
   return (
-    <div className="app">
-      <div className="content">
-        {activeTab === 'today'  && <Dashboard key="today" uid={uid} />}
+    <div className="max-w-sm mx-auto min-h-screen bg-slate-50 relative">
+      {/* Page content */}
+      <div className="pb-24">
+        {activeTab === 'today'  && <Dashboard    uid={uid} />}
         {activeTab === 'habits' && <HabitManager uid={uid} />}
         {activeTab === 'stats'  && <Stats />}
       </div>
 
-      <nav className="bottom-nav">
-        {tabs.map(tab => (
+      {/* Bottom nav */}
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white/90 backdrop-blur border-t border-slate-100 flex items-stretch pb-safe z-50 shadow-[0_-1px_20px_rgba(0,0,0,0.06)]">
+        {TABS.map(tab => (
           <button key={tab.id}
-            className={`nav-btn ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}>
-            <span className="nav-icon">{tab.icon}</span>
-            <span className="nav-label">{tab.label}</span>
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-all ${
+              activeTab === tab.id
+                ? 'text-indigo-600'
+                : 'text-slate-400 hover:text-slate-600'
+            }`}>
+            <span className={`text-xl leading-none transition-transform duration-200 ${activeTab === tab.id ? 'scale-110' : ''}`}>
+              {tab.icon}
+            </span>
+            <span className="text-[10px] font-semibold tracking-wide">{tab.label}</span>
+            {activeTab === tab.id && (
+              <span className="absolute bottom-1.5 w-1 h-1 rounded-full bg-indigo-600" />
+            )}
           </button>
         ))}
-        <button className="nav-btn" onClick={signOut} title="Sign out">
-          <span className="nav-icon">🚪</span>
-          <span className="nav-label">Logout</span>
+        <button onClick={signOut}
+          className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-slate-400 hover:text-red-400 transition-colors">
+          <span className="text-xl leading-none">🚪</span>
+          <span className="text-[10px] font-semibold tracking-wide">Logout</span>
         </button>
       </nav>
     </div>
@@ -97,9 +100,5 @@ function AppInner() {
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppInner />
-    </AuthProvider>
-  )
+  return <AuthProvider><AppInner /></AuthProvider>
 }
