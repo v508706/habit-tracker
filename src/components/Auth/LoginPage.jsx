@@ -1,12 +1,31 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import ConfigCheck from '../ConfigCheck/ConfigCheck'
+
+// Map Firebase error codes to friendly messages
+function friendlyError(code) {
+  switch (code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Sign-in window was closed. Please try again.'
+    case 'auth/popup-blocked':
+      return 'Pop-up was blocked by your browser. Please allow pop-ups for this site.'
+    case 'auth/network-request-failed':
+      return 'Network error. Check your internet connection and try again.'
+    case 'auth/unauthorized-domain':
+      return 'This domain is not authorised in Firebase. Add it under Authentication → Authorized domains.'
+    case 'auth/internal-error':
+      return 'Firebase internal error. Check that Google Sign-in is enabled in Firebase Console.'
+    case 'auth/configuration-not-found':
+      return 'Firebase is not configured. Check your VITE_FIREBASE_* environment variables.'
+    default:
+      return `Sign-in failed (${code || 'unknown'}). Check the browser console for details.`
+  }
+}
 
 export default function LoginPage() {
   const { signInWithGoogle } = useAuth()
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState('')
-  const [showConfig, setShowConfig] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
 
   const handleGoogle = async () => {
     setLoading(true)
@@ -14,7 +33,7 @@ export default function LoginPage() {
     try {
       await signInWithGoogle()
     } catch (e) {
-      setError('Sign-in failed. Please try again.')
+      setError(friendlyError(e.code))
       setLoading(false)
     }
   }
@@ -41,11 +60,7 @@ export default function LoginPage() {
           ))}
         </div>
 
-        <button
-          className="btn-google"
-          onClick={handleGoogle}
-          disabled={loading}
-        >
+        <button className="btn-google" onClick={handleGoogle} disabled={loading}>
           {loading ? (
             <span className="spinner" />
           ) : (
@@ -61,19 +76,8 @@ export default function LoginPage() {
 
         {error && <p className="login-error">{error}</p>}
 
-        <p className="login-privacy">
-          Your data is stored securely and never shared.
-        </p>
-
-        <button
-          style={{ marginTop: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-light)', textDecoration: 'underline' }}
-          onClick={() => setShowConfig(true)}
-        >
-          🔧 Check Firebase config
-        </button>
+        <p className="login-privacy">Your data is stored securely and never shared.</p>
       </div>
-
-      {showConfig && <ConfigCheck onDismiss={() => setShowConfig(false)} />}
     </div>
   )
 }
