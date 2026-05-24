@@ -5,6 +5,7 @@ import SetupWizard from './components/Setup/SetupWizard'
 import Dashboard from './components/Dashboard/Dashboard'
 import HabitManager from './components/Habits/HabitManager'
 import Stats from './components/Stats/Stats'
+import ConfigCheck from './components/ConfigCheck/ConfigCheck'
 import {
   isSetupDone, getHabits, getCompletions,
   getTodayString, getDayName, getUserName,
@@ -25,9 +26,10 @@ function Spinner() {
 
 function MainApp({ uid }) {
   const { signOut } = useAuth()
-  const [setupDone, setSetupDone] = useState(false)
+  const [setupDone,   setSetupDone]   = useState(false)
   const [syncLoading, setSyncLoading] = useState(true)
-  const [activeTab, setActiveTab]     = useState('today')
+  const [activeTab,   setActiveTab]   = useState('today')
+  const [showConfig,  setShowConfig]  = useState(false)
 
   // On mount: pull Firestore → localStorage, then determine if setup is done
   useEffect(() => {
@@ -87,11 +89,17 @@ function MainApp({ uid }) {
             <span className="nav-label">{tab.label}</span>
           </button>
         ))}
+        <button className="nav-btn" onClick={() => setShowConfig(true)} title="Check config">
+          <span className="nav-icon">🔧</span>
+          <span className="nav-label">Config</span>
+        </button>
         <button className="nav-btn" onClick={signOut} title="Sign out">
           <span className="nav-icon">🚪</span>
           <span className="nav-label">Logout</span>
         </button>
       </nav>
+
+      {showConfig && <ConfigCheck onDismiss={() => setShowConfig(false)} />}
     </div>
   )
 }

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
+import ConfigCheck from '../ConfigCheck/ConfigCheck'
 
 export default function LoginPage() {
   const { signInWithGoogle } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState('')
+  const [showConfig, setShowConfig] = useState(false)
 
   const handleGoogle = async () => {
     setLoading(true)
@@ -62,7 +64,16 @@ export default function LoginPage() {
         <p className="login-privacy">
           Your data is stored securely and never shared.
         </p>
+
+        <button
+          style={{ marginTop: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-light)', textDecoration: 'underline' }}
+          onClick={() => setShowConfig(true)}
+        >
+          🔧 Check Firebase config
+        </button>
       </div>
+
+      {showConfig && <ConfigCheck onDismiss={() => setShowConfig(false)} />}
     </div>
   )
 }
