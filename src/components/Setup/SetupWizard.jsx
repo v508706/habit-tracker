@@ -3,8 +3,26 @@ import { saveHabits, saveUserName, markSetupDone, saveTimezone } from '../../uti
 import { requestNotificationPermission } from '../../utils/notifications'
 import { cloudSaveProfile, cloudSaveHabits } from '../../utils/db'
 
-const EMOJIS = ['🏃','🎵','♟️','📚','💪','🧘','💊','💧','🛌','✏️','🍎','🎯',
-  '🎨','🏊','🚴','🎸','🌱','📝','🧩','🏋️','🥗','☕','🧠','🎤','🦷','🚶','🐾','📷']
+const EMOJIS = [
+  // Fitness & Movement
+  '🏃','🏃‍♂️','🚶','🧘','🏋️','🏊','🚴','💪',
+  // Chess
+  '♟️','♜','🏰',
+  // Music & Keyboard
+  '🎵','🎸','🎹','⌨️','🎤',
+  // Study & Books
+  '📚','📖','📗','📕','✏️','📝','🧠','🔢','📰',
+  // Language & Tuition
+  '🗣️','🎓','🏫','🇮🇳',
+  // Health & Wellness
+  '💊','💧','🛌','🦷','🍎','🥗','☕',
+  // Arts & Creativity
+  '🎨','🖍️','✍️','📷',
+  // Tech & Learning
+  '🤖','🧮','🧩','🌱',
+  // Spirituality & Other
+  '🛕','🌠','🎯','🐾','🧹','🎃',
+]
 
 const COLORS = [
   '#ef4444','#f97316','#eab308','#22c55e','#14b8a6',
