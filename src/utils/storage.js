@@ -103,6 +103,39 @@ export function getStreak(habitId) {
   return streak
 }
 
+/* All-time best streak (looks back up to 3 years) */
+export function getLongestStreak(habitId) {
+  const completions = getCompletions()
+  const habits = getHabits()
+  const habit = habits.find(h => h.id === habitId)
+  if (!habit) return 0
+
+  const today = new Date()
+  let max = 0
+  let cur = 0
+
+  // walk from 3 years ago → today (oldest first = forward order)
+  for (let i = 1095; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    const dayName = getDayName(d)
+    if (!habit.days.includes(dayName)) continue
+
+    const dateStr = getDateString(d)
+    const isToday = i === 0
+
+    if (completions[dateStr]?.[habitId]) {
+      cur++
+      if (cur > max) max = cur
+    } else if (isToday) {
+      // today not done yet — don't break current streak
+    } else {
+      cur = 0
+    }
+  }
+  return max
+}
+
 export function getCompletionRate(habitId, days = 7) {
   const completions = getCompletions()
   const habits = getHabits()

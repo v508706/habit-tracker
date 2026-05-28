@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   getHabits, getCompletions, toggleCompletion,
-  getTodayString, getDayName, getUserName,
+  getTodayString, getDayName, getUserName, getStreak,
 } from '../../utils/storage'
 import { cloudToggleCompletion } from '../../utils/db'
 
@@ -9,14 +9,13 @@ import { cloudToggleCompletion } from '../../utils/db'
 function ProgressRing({ percent, size = 96, stroke = 9 }) {
   const r    = (size - stroke) / 2
   const circ = 2 * Math.PI * r
-  const offset = circ - (percent / 100) * circ
-
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
         <circle className="ring-track" r={r} cx={size / 2} cy={size / 2} strokeWidth={stroke} />
         <circle className="ring-fill" r={r} cx={size / 2} cy={size / 2}
-          strokeWidth={stroke} strokeDasharray={circ} strokeDashoffset={offset}
+          strokeWidth={stroke} strokeDasharray={circ}
+          strokeDashoffset={circ - (percent / 100) * circ}
           stroke={percent === 100 ? '#10b981' : '#6366f1'} />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
@@ -39,6 +38,74 @@ const fmtTime = t => {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
+/* ── Streak Monitor ────────────────────────────────────────────── */
+function StreakMonitor({ todayHabits, completions, today, onJumpToHabit }) {
+  const [dismissed, setDismissed] = useState(new Set())
+
+  // Habits that are scheduled today, have an active streak, but not yet done
+  const atRisk = todayHabits.filter(h =>
+    !completions[today]?.[h.id] &&
+    getStreak(h.id) > 0 &&
+    !dismissed.has(h.id)
+  )
+
+  if (atRisk.length === 0) return null
+
+  const urgencyColor = (streak) => {
+    if (streak >= 30) return { bg: 'from-red-500 to-rose-600',    badge: 'bg-red-100 text-red-700' }
+    if (streak >= 7)  return { bg: 'from-orange-500 to-amber-500', badge: 'bg-orange-100 text-orange-700' }
+    return              { bg: 'from-amber-400 to-yellow-500',      badge: 'bg-amber-100 text-amber-700' }
+  }
+
+  return (
+    <div className="px-4 pt-4">
+      <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+        <span className="animate-pulse">⚠️</span> Streaks at risk today
+      </p>
+      <div className="space-y-2">
+        {atRisk.map(h => {
+          const streak = getStreak(h.id)
+          const { bg, badge } = urgencyColor(streak)
+          return (
+            <div key={h.id}
+              className={`bg-gradient-to-r ${bg} rounded-2xl p-3.5 flex items-center gap-3 shadow-md animate-fade-in`}>
+              {/* Emoji */}
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl flex-shrink-0">
+                {h.emoji}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-bold text-sm truncate">{h.name}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${badge}`}>
+                    🔥 {streak} day streak
+                  </span>
+                  <span className="text-white/70 text-[10px]">don't break it!</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col gap-1 flex-shrink-0">
+                <button
+                  onClick={() => onJumpToHabit(h.id)}
+                  className="px-3 py-1.5 bg-white text-slate-700 font-bold text-xs rounded-lg shadow-sm hover:bg-slate-50 transition-colors active:scale-95">
+                  Do it ✓
+                </button>
+                <button
+                  onClick={() => setDismissed(s => new Set([...s, h.id]))}
+                  className="px-3 py-1 bg-white/20 text-white/80 font-semibold text-[10px] rounded-lg hover:bg-white/30 transition-colors">
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /* ── Dashboard ─────────────────────────────────────────────────── */
 export default function Dashboard({ uid }) {
   const today     = getTodayString()
@@ -48,6 +115,7 @@ export default function Dashboard({ uid }) {
   const [habits,      setHabits]      = useState(getHabits)
   const [completions, setCompletions] = useState(getCompletions)
   const [justDone,    setJustDone]    = useState(null)
+  const [highlightId, setHighlightId] = useState(null)
 
   useEffect(() => {
     setHabits(getHabits())
@@ -61,13 +129,24 @@ export default function Dashboard({ uid }) {
   const doneCount = todayHabits.filter(h => completions[today]?.[h.id]).length
   const pct       = todayHabits.length === 0 ? 0 : Math.round((doneCount / todayHabits.length) * 100)
 
-  const handleToggle = (habitId) => {
+  const handleToggle = useCallback((habitId) => {
     const updated = toggleCompletion(habitId, today)
     setCompletions({ ...updated })
     const newVal = !!updated[today]?.[habitId]
     if (newVal) { setJustDone(habitId); setTimeout(() => setJustDone(null), 400) }
     if (uid) cloudToggleCompletion(uid, habitId, today, newVal)
-  }
+  }, [today, uid])
+
+  // "Do it" from streak nudge — toggle + flash highlight on the card
+  const handleJumpToHabit = useCallback((habitId) => {
+    handleToggle(habitId)
+    setHighlightId(habitId)
+    setTimeout(() => setHighlightId(null), 1500)
+    // smooth scroll to that card
+    setTimeout(() => {
+      document.getElementById(`habit-card-${habitId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+  }, [handleToggle])
 
   const dateStr = new Date().toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
@@ -98,6 +177,14 @@ export default function Dashboard({ uid }) {
         </div>
       </div>
 
+      {/* ── Streak Monitor ── */}
+      <StreakMonitor
+        todayHabits={todayHabits}
+        completions={completions}
+        today={today}
+        onJumpToHabit={handleJumpToHabit}
+      />
+
       {/* ── Habit list ── */}
       <div className="px-4 py-5">
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Today's Schedule</p>
@@ -111,37 +198,50 @@ export default function Dashboard({ uid }) {
         ) : (
           <div className="space-y-2.5">
             {todayHabits.map(h => {
-              const done = !!(completions[today]?.[h.id])
-              const popping = justDone === h.id
+              const done      = !!(completions[today]?.[h.id])
+              const popping   = justDone === h.id
+              const highlight = highlightId === h.id
+
               return (
-                <button key={h.id} onClick={() => handleToggle(h.id)}
+                <button key={h.id} id={`habit-card-${h.id}`}
+                  onClick={() => handleToggle(h.id)}
                   className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border transition-all duration-200 text-left active:scale-98 ${
-                    done
+                    highlight
+                      ? 'bg-emerald-50 border-emerald-300 shadow-md scale-[1.02]'
+                      : done
                       ? 'bg-emerald-50 border-emerald-100 shadow-sm'
                       : 'bg-white border-slate-100 shadow-sm hover:border-indigo-100 hover:shadow-md'
                   } ${popping ? 'animate-check-pop' : ''}`}>
 
-                  {/* Emoji circle */}
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 transition-all"
                     style={{ background: done ? h.color + '33' : h.color + '18' }}>
                     {h.emoji}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className={`font-semibold text-sm leading-snug truncate ${done ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-slate-800'}`}>
+                    <p className={`font-semibold text-sm leading-snug truncate ${done ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-slateate-800'}`}>
                       {h.name}
                     </p>
-                    <p className={`text-xs mt-0.5 ${done ? 'text-emerald-500' : 'text-slate-400'}`}>
-                      🕐 {fmtTime(h.time)}
-                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className={`text-xs ${done ? 'text-emerald-500' : 'text-slate-400'}`}>
+                        🕐 {fmtTime(h.time)}
+                      </p>
+                      {/* Show streak badge on habit card */}
+                      {(() => {
+                        const s = getStreak(h.id)
+                        return s > 0 ? (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            done ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-50 text-orange-500'
+                          }`}>
+                            🔥 {s}
+                          </span>
+                        ) : null
+                      })()}
+                    </div>
                   </div>
 
-                  {/* Check circle */}
                   <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                    done
-                      ? 'bg-emerald-500 border-emerald-500 scale-110'
-                      : 'border-slate-200 bg-white'
+                    done ? 'bg-emerald-500 border-emerald-500 scale-110' : 'border-slate-200 bg-white'
                   }`}>
                     {done && <span className="text-white text-xs font-bold">✓</span>}
                   </div>
