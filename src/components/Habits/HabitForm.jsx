@@ -89,10 +89,10 @@ export default function HabitForm({ initialData, onSave, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
       onClick={e => e.target === e.currentTarget && onClose()}>
 
-      <div className="w-full max-w-sm bg-white rounded-t-3xl shadow-2xl animate-slide-up overflow-hidden">
+      <div className="w-full max-w-sm bg-white rounded-t-3xl shadow-2xl animate-slide-up overflow-hidden pb-safe">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-slate-200" />
