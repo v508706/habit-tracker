@@ -12,6 +12,7 @@ import {
   saveHabits, getHabits,
   saveCompletions, getCompletions,
   saveUserName, markSetupDone,
+  getCompletionDetails, saveCompletionDetail,
 } from './storage'
 
 // ─── Pull from Firestore → localStorage on login ────────────────────────────
@@ -33,6 +34,16 @@ export async function initUserData(uid) {
       const completions = {}
       compSnap.forEach(d => { completions[d.id] = d.data() })
       saveCompletions(completions)
+    }
+
+    // Pull completion details (time + metric)
+    const detailsSnap = await getDocs(collection(db, 'users', uid, 'completion_details'))
+    if (!detailsSnap.empty) {
+      detailsSnap.forEach(d => {
+        Object.entries(d.data()).forEach(([habitId, detail]) => {
+          saveCompletionDetail(habitId, d.id, detail)
+        })
+      })
     }
 
     return { setupDone: !!profile?.setupDone, name: profile?.name || '' }
@@ -80,6 +91,18 @@ export async function cloudToggleCompletion(uid, habitId, date, value) {
       { merge: true }
     )
   } catch (e) { console.warn('[db] completion sync failed:', e.message) }
+}
+
+// ─── Completion Details (time + metric) ──────────────────────────────────────
+
+export async function cloudSaveCompletionDetail(uid, habitId, date, detail) {
+  try {
+    await setDoc(
+      doc(db, 'users', uid, 'completion_details', date),
+      { [habitId]: detail },
+      { merge: true }
+    )
+  } catch (e) { console.warn('[db] detail sync failed:', e.message) }
 }
 
 // ─── FCM token ───────────────────────────────────────────────────────────────

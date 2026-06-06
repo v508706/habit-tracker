@@ -4,6 +4,7 @@ const KEYS = {
   SETUP_DONE: 'ht_setup',
   USER_NAME: 'ht_username',
   TIMEZONE: 'ht_timezone',
+  COMPLETION_DETAILS: 'ht_completion_details',
 }
 
 export function getTimezone() {
@@ -157,4 +158,132 @@ export function getCompletionRate(habitId, days = 7) {
   }
 
   return scheduled === 0 ? 0 : Math.round((done / scheduled) * 100)
+}
+
+// ── Completion Details (time + metric) — separate storage key ─────
+// Stored as: { [dateStr]: { [habitId]: { timeSpent: {h,m}|null, metricValue: number|null } } }
+// Kept separate from completions so boolean check logic is never broken.
+
+export function getCompletionDetails() {
+  try { return JSON.parse(localStorage.getItem(KEYS.COMPLETION_DETAILS)) || {} }
+  catch { return {} }
+}
+
+export function saveCompletionDetail(habitId, dateStr, patch) {
+  const details = getCompletionDetails()
+  if (!details[dateStr]) details[dateStr] = {}
+  details[dateStr][habitId] = { ...(details[dateStr][habitId] || {}), ...patch }
+  localStorage.setItem(KEYS.COMPLETION_DETAILS, JSON.stringify(details))
+  return details
+}
+
+export function getEntryDetail(habitId, dateStr) {
+  return getCompletionDetails()[dateStr]?.[habitId] || null
+}
+
+// ── Time helpers ──────────────────────────────────────────────────
+const _toMins = ts => ts ? (ts.h || 0) * 60 + (ts.m || 0) : 0
+
+export function formatMins(totalMins) {
+  if (!totalMins || totalMins === 0) return null
+  if (totalMins < 60) return `${totalMins}m`
+  const h = Math.floor(totalMins / 60)
+  const m = totalMins % 60
+  return m === 0 ? `${h}h` : `${h}h ${m}m`
+}
+
+/** Total minutes logged for a habit over last numDays days */
+export function getTimeSpentInRange(habitId, numDays) {
+  const completions = getCompletions()
+  const details     = getCompletionDetails()
+  let total = 0
+  const today = new Date()
+  for (let i = 0; i < numDays; i++) {
+    const d = new Date(today); d.setDate(d.getDate() - i)
+    const ds = getDateString(d)
+    if (completions[ds]?.[habitId] && details[ds]?.[habitId]?.timeSpent)
+      total += _toMins(details[ds][habitId].timeSpent)
+  }
+  return total
+}
+
+/** Per-day time (in minutes) for last numDays days — for bar charts */
+export function getTimeSpentByDay(habitId, numDays) {
+  const completions = getCompletions()
+  const details     = getCompletionDetails()
+  const today       = new Date()
+  return Array.from({ length: numDays }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - (numDays - 1 - i))
+    const ds = getDateString(d)
+    const mins = (completions[ds]?.[habitId] && details[ds]?.[habitId]?.timeSpent)
+      ? _toMins(details[ds][habitId].timeSpent) : 0
+    return { date: ds, mins, label: `${d.getDate()}/${d.getMonth() + 1}` }
+  })
+}
+
+/** Total minutes logged for a habit in a specific calendar month */
+export function getTimeSpentForMonth(habitId, year, month) {
+  const completions = getCompletions()
+  const details     = getCompletionDetails()
+  const numDays     = new Date(year, month + 1, 0).getDate()
+  let total = 0
+  for (let d = 1; d <= numDays; d++) {
+    const date = new Date(year, month, d)
+    const ds   = getDateString(date)
+    if (completions[ds]?.[habitId] && details[ds]?.[habitId]?.timeSpent)
+      total += _toMins(details[ds][habitId].timeSpent)
+  }
+  return total
+}
+
+/** Total minutes logged for a habit in a specific year */
+export function getTimeSpentForYear(habitId, year) {
+  const completions = getCompletions()
+  const details     = getCompletionDetails()
+  let total = 0
+  for (let m = 0; m < 12; m++) total += getTimeSpentForMonth(habitId, year, m)
+  return total
+}
+
+// ── Metric helpers ────────────────────────────────────────────────
+/** Per-day metric values for last numDays days — null when no entry */
+export function getMetricByDay(habitId, numDays) {
+  const completions = getCompletions()
+  const details     = getCompletionDetails()
+  const today       = new Date()
+  return Array.from({ length: numDays }, (_, i) => {
+    const d = new Date(today); d.setDate(d.getDate() - (numDays - 1 - i))
+    const ds  = getDateString(d)
+    const val = (completions[ds]?.[habitId] && details[ds]?.[habitId]?.metricValue != null)
+      ? details[ds][habitId].metricValue : null
+    return { date: ds, value: val, label: `${d.getDate()}/${d.getMonth() + 1}` }
+  })
+}
+
+/** Per-day metric values for a specific calendar month */
+export function getMetricForMonth(habitId, year, month) {
+  const completions = getCompletions()
+  const details     = getCompletionDetails()
+  const numDays     = new Date(year, month + 1, 0).getDate()
+  const result = []
+  for (let d = 1; d <= numDays; d++) {
+    const date = new Date(year, month, d)
+    const ds   = getDateString(date)
+    const val  = (completions[ds]?.[habitId] && details[ds]?.[habitId]?.metricValue != null)
+      ? details[ds][habitId].metricValue : null
+    if (val !== null) result.push({ date: ds, value: val, label: String(d) })
+  }
+  return result
+}
+
+/** Metric sum for a range */
+export function getMetricTotalInRange(habitId, numDays) {
+  return getMetricByDay(habitId, numDays)
+    .reduce((acc, d) => acc + (d.value || 0), 0)
+}
+
+/** Metric sum for a specific month */
+export function getMetricTotalForMonth(habitId, year, month) {
+  return getMetricForMonth(habitId, year, month)
+    .reduce((acc, d) => acc + d.value, 0)
 }

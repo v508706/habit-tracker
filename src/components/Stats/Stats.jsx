@@ -2,6 +2,9 @@ import { useState } from 'react'
 import {
   getHabits, getCompletions, getStreak, getLongestStreak,
   getCompletionRate, getDayName, getDateString,
+  getTimeSpentInRange, getTimeSpentByDay, getTimeSpentForMonth, getTimeSpentForYear,
+  getMetricByDay, getMetricForMonth, getMetricTotalInRange, getMetricTotalForMonth,
+  formatMins,
 } from '../../utils/storage'
 
 // ── constants ─────────────────────────────────────────────────────
@@ -242,6 +245,152 @@ function Legend({ isSingle }) {
   )
 }
 
+// ── MiniBarChart ──────────────────────────────────────────────────
+function MiniBarChart({ data, color, unit, emptyMsg }) {
+  const vals   = data.map(d => d.value ?? d.mins ?? 0)
+  const maxVal = Math.max(...vals, 1)
+  const hasAny = vals.some(v => v > 0)
+
+  if (!hasAny) {
+    return (
+      <div className="flex items-center justify-center h-16 text-slate-300 text-xs">{emptyMsg || 'No data yet'}</div>
+    )
+  }
+
+  return (
+    <div className="flex items-end gap-1" style={{ height: 72 }}>
+      {data.map((d, i) => {
+        const val  = d.value ?? d.mins ?? 0
+        const pct  = val > 0 ? Math.max((val / maxVal) * 100, 6) : 0
+        const label = unit === 'time'
+          ? (val >= 60 ? `${Math.floor(val/60)}h${val%60 ? (val%60)+'m' : ''}` : val > 0 ? `${val}m` : '')
+          : val > 0 ? `${val}${unit ? ' '+unit : ''}` : ''
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: '100%' }}>
+            <span className="text-[8px] text-slate-400 font-medium leading-none truncate w-full text-center">{label}</span>
+            <div className="w-full rounded-t-sm transition-all"
+              style={{ height: `${pct}%`, background: color || '#6366f1', minHeight: val > 0 ? 4 : 0 }} />
+            <span className="text-[8px] text-slate-400 leading-none">{d.label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── TimeAndMetricSection ──────────────────────────────────────────
+function TimeAndMetricSection({ habit, completions }) {
+  const now      = new Date()
+  const [mPeriod, setMPeriod] = useState('7d')   // metric period toggle
+
+  // ── Time stats ───────────────────────────────────────────────────
+  const todayMins = (() => {
+    const d = getTimeSpentByDay(habit.id, 1)
+    return d[0]?.mins || 0
+  })()
+  const weekMins  = getTimeSpentInRange(habit.id, 7)
+  const monthMins = getTimeSpentForMonth(habit.id, now.getFullYear(), now.getMonth())
+  const yearMins  = getTimeSpentForYear(habit.id, now.getFullYear())
+  const timeData7 = getTimeSpentByDay(habit.id, 7)
+  const hasTimeData = weekMins > 0 || todayMins > 0
+
+  // ── Metric stats ─────────────────────────────────────────────────
+  const hasMetric    = !!habit.metric
+  const metricData7  = hasMetric ? getMetricByDay(habit.id, 7)  : []
+  const metricData30 = hasMetric ? getMetricByDay(habit.id, 30) : []
+  const metricData   = mPeriod === '7d' ? metricData7 : metricData30
+  const metricTotal7  = hasMetric ? getMetricTotalInRange(habit.id, 7)  : 0
+  const metricTotal30 = hasMetric ? getMetricTotalInRange(habit.id, 30) : 0
+  const metricMonthTotal = hasMetric ? getMetricTotalForMonth(habit.id, now.getFullYear(), now.getMonth()) : 0
+  const metricBest = hasMetric
+    ? Math.max(...(mPeriod === '7d' ? metricData7 : metricData30).map(d => d.value || 0), 0)
+    : 0
+  const hasMetricData = metricData.some(d => d.value != null)
+
+  if (!hasTimeData && !(hasMetric && hasMetricData)) return null
+
+  return (
+    <>
+      {/* ── Time spent section ── */}
+      {hasTimeData && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-4">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">⏱ Time Spent</p>
+
+          {/* Totals row */}
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {[
+              { label: 'Today',  val: formatMins(todayMins) },
+              { label: 'Week',   val: formatMins(weekMins)  },
+              { label: 'Month',  val: formatMins(monthMins) },
+              { label: 'Year',   val: formatMins(yearMins)  },
+            ].map(({ label, val }) => (
+              <div key={label} className="bg-teal-50 rounded-xl p-2 text-center">
+                <p className="text-sm font-black text-teal-700 leading-none">{val || '—'}</p>
+                <p className="text-[9px] text-teal-500 mt-0.5 font-semibold">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* 7-day bar chart */}
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Last 7 Days</p>
+          <MiniBarChart data={timeData7} color="#14b8a6" unit="time" emptyMsg="No time logged this week" />
+        </div>
+      )}
+
+      {/* ── Metric trend section ── */}
+      {hasMetric && hasMetricData && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              📍 {habit.metric.name}
+            </p>
+            {/* Period toggle */}
+            <div className="flex bg-slate-100 rounded-lg p-0.5">
+              {['7d','30d'].map(p => (
+                <button key={p} onClick={() => setMPeriod(p)}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
+                    mPeriod === p ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'
+                  }`}>{p}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Summary chips */}
+          <div className="flex gap-2 mb-4">
+            <div className="flex-1 bg-violet-50 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-black text-violet-700 leading-none">
+                {mPeriod === '7d' ? metricTotal7 : metricTotal30}
+                {habit.metric.unit ? ` ${habit.metric.unit}` : ''}
+              </p>
+              <p className="text-[9px] text-violet-400 mt-0.5 font-semibold">Total ({mPeriod})</p>
+            </div>
+            <div className="flex-1 bg-violet-50 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-black text-violet-700 leading-none">
+                {metricBest > 0 ? `${metricBest}${habit.metric.unit ? ' '+habit.metric.unit : ''}` : '—'}
+              </p>
+              <p className="text-[9px] text-violet-400 mt-0.5 font-semibold">Best ({mPeriod})</p>
+            </div>
+            <div className="flex-1 bg-violet-50 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-black text-violet-700 leading-none">
+                {metricMonthTotal > 0 ? `${metricMonthTotal}${habit.metric.unit ? ' '+habit.metric.unit : ''}` : '—'}
+              </p>
+              <p className="text-[9px] text-violet-400 mt-0.5 font-semibold">This month</p>
+            </div>
+          </div>
+
+          {/* Bar chart */}
+          <MiniBarChart
+            data={metricData}
+            color={habit.color}
+            unit={habit.metric.unit}
+            emptyMsg={`No ${habit.metric.name} logged yet`}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── HabitDetail (individual drill-down) ───────────────────────────
 function HabitDetail({ habit, completions, allHabits, onBack }) {
   const now = new Date()
@@ -295,6 +444,9 @@ function HabitDetail({ habit, completions, allHabits, onBack }) {
           <StatCard value={`${rate7}%`} label="Last 7 Days"   icon="📈" gradient="from-indigo-500 to-violet-600" />
           <StatCard value={`${rate30}%`} label="Last 30 Days" icon="📅" gradient="from-teal-500 to-emerald-600" />
         </div>
+
+        {/* Time + Metric section */}
+        <TimeAndMetricSection habit={habit} completions={completions} />
 
         {/* Sub-tabs */}
         <div className="flex bg-slate-100 rounded-xl p-1">
