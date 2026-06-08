@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   getHabits, getCompletions, toggleCompletion,
   getTodayString, getDayName, getUserName, getStreak,
@@ -56,9 +57,9 @@ function LogSheet({ habit, existingDetail, onSave, onClose }) {
     onClose()
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm"
       onClick={e => e.target === e.currentTarget && onClose()}>
 
       <div className="w-full max-w-sm bg-white rounded-t-3xl shadow-2xl animate-slide-up pb-safe">
@@ -137,7 +138,8 @@ function LogSheet({ habit, existingDetail, onSave, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
